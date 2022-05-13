@@ -1,0 +1,119 @@
+---
+title: "finres"
+author: "Yue Wang"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = TRUE,
+	warning = TRUE
+)
+options(repos = list(CRAN="http://cran.rstudio.com/"))
+
+library(dplyr)
+library(tidyr)
+require(tidyverse)
+library(dplyr)
+install.packages('fst')
+library(fst)
+install.packages('lubridate')
+library(base)
+library(lubridate)
+library(ggplot2) 
+install.packages('plotly')
+library(plotly)
+install.packages('caTools')
+install.packages('scales')
+library(scales)
+install.packages('randomForest')
+setwd("C:/Users/stant/Documents/R_test")
+```
+
+## 1.	Loading, pre-processing, analyzing and visualizing data
+
+a.	Load file: “IIGF_ETH_ERA5_19952021_ALL.fst” – reading data in fst format requires installing the fst package
+
+```{r 1a}
+ft <- read_fst("IIGF_ETH_ERA5_19952021_ALL.fst") 
+
+```
+
+b.
+```{r 1b, echo=TRUE}
+summary(ft$GID_2)
+u_gid<-length(unique(ft$GID_2))
+u_list<-unique(ft$GID_2)
+```
+The number of individual regions available – GID_2 column is `r u_gid`.
+ 
+c. Create a subset of data for the region (GID_2 column): "ETH.8.14_1"
+```{r 1c}
+G1c<-ft%>%filter(GID_2 == "ETH.8.14_1")
+```
+
+d.	Add the month number for every date (date column) in the subset
+```{r 1d}
+G1c<-G1c %>% mutate(month = month(date))
+
+```
+
+e.	Compute mean monthly temperature (tas column) for every year available in the subset.
+```{r 1e}
+G1c<-G1c%>%group_by(month)%>%mutate(mean_temp_monthly=mean(tas))
+
+```
+
+f.	Plot mean monthly temperature for every year: in x-axis month & year and y-axis the mean temperature.
+```{r 1f, echo=FALSE}
+p <-G1c%>% ggplot( aes(x=date, y=mean_temp_monthly)) +
+  geom_area(fill="#69b3a2", alpha=0.5) +
+  geom_line(color="#69b3a2") +
+  ylab("monthly temperature mean") + scale_x_date(date_labels="%Y", date_break ="1 year", date_minor_break = "1 month")
+ETH814_1_plot <- ggplotly(p)
+ETH814_1_plot
+```
+
+Proceed following the same steps c. to f. for a random sample of 10 regions in the database and plot the results.
+
+
+```{r 10plots, echo=FALSE}
+
+
+facet<- c( u_list[1:10])
+
+G111<-ft%>% mutate(month = month(date))%>%group_by(month)%>%mutate(mean_temp_monthly=mean(tas))
+ppp<-G111[G111$GID_2 %in% facet,]%>%ggplot( aes(x=date, y=mean_temp_monthly)) +
+  geom_area(fill="#69b3a2", alpha=0.5) +
+  geom_line(color="#69b3a2") +
+  facet_wrap(~GID_2, ncol=5) + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))+
+  ylab("monthly temperature mean") + scale_x_date(date_labels="%Y", date_break ="2 year", date_minor_break = "1 month")
+
+ppp
+```
+
+
+## 2.	Running a regression analysis, testing and explaining the results
+Run a panel regression in R (plm package
+
+```{r setup}
+knitr::opts_chunk$set(include = FALSE)
+data <- load(file='df1.rda')
+
+summary(df1)
+```
+
+b.	Create the panel regression with “log_gdppc” as dependent variable and the following independent variables: SPI01_l00s_new, SPI01_l02n_new, SPI01_l03n_new, 
+SPI01_l04n_new, SPI01_l05n_new, SPI01_l06n_new, SPI01_l07n_new SPI01_l09s_new, lin_temp and sq_temp. 
+SPI01_l0x are measures of the country’s spatial and temporal exposure to different ranges of precipitation intensity. l01 is the exposure to extreme dry events. On the opposite side, l09 represent extreme wet events. lin_temp is the deviation from historical temperature while sq_temp is the square of the temperature deviation.
+
+
+c.	If possible / relevant, you can add control variables. Control variables are available in the same df1 dataframe. For example: polity2n is the polity index (normalized), oilprice, remit for remittances, gfceshare for government expenditures, pctODA as the percentage of ODA in comparison to government budget or tradeopen as a measure of country’s trade openness.
+
+d.	Briefly comment the results and explain the potential analytically gaps and ways to address them trigonometrical. 
+
+e.	How could the model be improved to provide more precise country-level results?
+
+
