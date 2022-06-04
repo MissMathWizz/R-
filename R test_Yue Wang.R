@@ -4,12 +4,10 @@ install.packages('plotly')
 install.packages('scales')
 install.packages('caTools')
 install.packages('randomForest')
-
+require(tidyverse)
 
 library(dplyr)
 library(tidyr)
-require(tidyverse)
-library(dplyr)
 library(fst)
 library(base)
 library(lubridate)
@@ -207,4 +205,4 @@ gic<-cbind(gic,mean_tas)
 
 gic[ , plot(date, mean_tas, type="l", ylab="mean", xlab="")]
 
-#Comment: data.table is generally slower than dplyr
+#Comment: data.table is generally faster than dplyr
