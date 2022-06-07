@@ -1,0 +1,252 @@
+---
+title: "US Firearm Trace and Crime study"
+author: "Anonymous"
+date: '2022-06-06'
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+
+```{r stype_stateup, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# install.packages('lubridate')
+# install.packages('fst')
+# install.packages('usmap')
+# install.packages('ggplot2')
+# install.packages('dplyr')
+# install.packages('tibble')
+# install.packages('readxl')
+# install.packages('dplyr')
+# install.packages('tidyr')
+# install.packages('vtable')
+# install.packages('broom')
+# install.packages('stargazer')
+library(stargazer)
+library(readxl)
+library(usmap)
+library(ggplot2)
+require(tidyverse)
+library(dplyr)
+library(tidyr)
+library(fst)
+library(base)
+library(lubridate)
+library(grid)
+library(tibble)
+library(dplyr)
+library(vtable)
+library(readr)
+library(stringr)
+library(broom)
+```
+
+## 1 Collect and summarize data on firearm traces
+
+### 1. download data on firearm traces by state and gun type from 2014-2020 from the Bureau of Alcohol, Tobacco, Firearms and Explosives, which can be found at https:// www.atf.gov/resource-center/firearms-trace-data-2020 listed as “Firearm Types Recovered and Traced in the United States and Territories.”
+```{r import&clean, echo=TRUE, message=FALSE, warning=FALSE}
+years <- c("2014", "2015","2016","2017","2018","2019","2020")
+
+myFunction <- function(.year){
+              df <- paste0("types_by_state_cy", .year, ".xlsx")
+              db <- read_excel(df, col_names=TRUE,
+                                sheet ="Weapon Type", 
+                                range="B2:BE17")%>%
+                      pivot_longer(cols= -1)%>%
+                      rename(state=name,type=...1)%>%
+                      mutate(year=.year)
+              
+              write.table(db, file = "ET.csv", append=T, sep=',', row.names=F, 
+                                col.names=F)
+}
+
+# Export merged data stored in type_state.csv 
+for (.year in years) {
+  myFunction(.year)
+}
+
+# import merged file
+type_state <- read_csv("ET.csv", col_names = FALSE)
+colnames(type_state) <- c("type","state","value","year")
+
+# clean merged data
+type_state<-type_state %>%mutate_all(funs(str_replace(., "TOTALS", "TOTAL")))%>%
+  mutate_all(funs(toupper)) %>%
+  mutate(across(where(is.character), gsub, pattern = " / ",replacement="/")) %>%
+  mutate(type=gsub("S$","",type)) %>%
+  mutate(type=gsub("S/","/",type)) %>% 
+  mutate(type = replace(type,type == "COMBINATION", "COMBINATION GUN"))%>%
+  mutate(type = replace(type,type=="UNKNOWN TYPE", "UNKNOWN"))%>% 
+  mutate(type = replace(type,type=="UNKNOWN TYPE", "UNKNOWN"))%>%
+  mutate(value=as.numeric(value))
+
+# check 
+sum(duplicated(type_state))
+count_type<-type_state%>%count(type)
+str(type_state)
+```
+
+### 2. In a couple of sentences describe a firearm trace.  the process that leads to trace (and therefore an entry into the ATF system).
+
+Firearm tracing is triggered when a firearm is, or is suspected to be, found at a crime scene. During  firearm tracing, US law enforcement agencies trace the firearm back to its manufacturer and investigate  how the firearm was introduced into the commercial space. This process is conducted nationally and/or  internationally. It usually takes 7-10 days. The subjects of tracing can also include US-sourced weapons  that are found abroad. 
+
+### 3. Create a clearly labeled table of summary statistics that describe the data. These should include the mean, standard deviation, min, and max of number of pistol, revolver, rifle, and shotgun traces. The table should have notes that describe the data source. (For an example of a well-designed and well-labeled table, see table 2 in this paper.)
+
+```{r , echo=FALSE}
+# Create datastype_state that only contains pistol, revolver, rifle, and shotgun traces
+PRRS<-type_state %>%
+  filter(type!="TOTAL",state!="TOTAL") %>%
+  select(-year,-state) %>%
+  filter(type %in% c("PISTOL", "REVOLVER", "RIFLE", "SHOTGUN"))
+
+#Shape PRRS wide
+PRRS_wide<-PRRS %>%
+  group_by(type) %>%
+  mutate(row = row_number()) %>%
+  tidyr::pivot_wider(names_from = "type", values_from = "value") %>%
+  select(-row)
+
+#Summary statistics table
+stable<-st(PRRS_wide, col.breaks = 4,
+   summ = list(
+     c('mean(x)','median(x)','sd(x)','min(x)','max(x)','notNA(x)')
+   ),
+   summ.names = list(
+     c('Mean','Median','SD','Min','Max','N')
+   ))
+
+
+```
+https://cran.r-project.org/web/packages/vtable/vigntype_statetes/sumtable.html
+
+`r stable`
+
+### 4.Create a map showing the total number of traces by state in 2019. (Suggestion: Tableau provides a free trial of mapping software. However, you are not required to use Tableau to compltype_statee this task.)
+```{r echo=TRUE, paged.print=TRUE}
+
+ts_2019 <- type_state %>%
+           filter(year==2019) %>% 
+           select(-year)
+
+state_total_wide <- ts_2019 %>%
+                    filter(type=="TOTAL") %>%
+                    select(-type) %>%
+                    filter(state!="TOTAL")
+
+plot_usmap(data = state_total_wide, values = "value", color = "red") + 
+  scale_fill_continuous(name = "Total traces (2020)", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+https://cran.r-project.org/web/packages/usmap/vigntype_stattype_statees/mapping.html
+
+### 5.Create two time series plots using all available years of data.
+
+#### a. The number of traces per year nationally, separated out by “hand gun” and “long gun”
+```{r echo=TRUE}
+nation <- type_state %>%
+          filter(state=="TOTAL") %>%
+          as.data.frame() %>% 
+          mutate(year=as.Date(year, "%Y"))
+
+longgun <- c("COMBINATION GUN", "MACHINEGUN","RIFLE","SHOTGUN")
+handgun <-c("FLARE GUN", "PISTOL","REVOLVER", "DERRINGER")
+nation <-nation %>% 
+        mutate(tp = case_when(type%in%handgun  ~ "hand gun",
+                              type%in%longgun  ~ "long gun"))
+
+
+tp_year_sum <- nation%>% 
+               group_by(tp,year)%>%
+               summarize(sum_trace = sum(value))
+
+year_total <- nation%>%
+              group_by(year)%>%
+              summarize(total=sum(value))
+
+nati <- merge(x=tp_year_sum,y=year_total,by="year")%>%
+        mutate(share=sum_trace/total)%>%
+        drop_na()
+
+ggplot(nati, aes(year,sum_trace)) +
+  geom_line() +
+  facet_wrap(vars(tp))
+
+
+```
+
+#### b. The share of traces per year nationally that are “hand guns” or “long guns”
+
+```{r share, echo=TRUE}
+
+ggplot(nati, aes(year,share)) +
+  geom_line()+facet_wrap(vars(tp))
+
+```
+
+## 2 Collect NICS background check data
+A second datastype_state that speaks to firearm prevalence in the US comes from the FBI: National Instant Criminal Background Check System (NICS).
+
+### 1. In a couple of sentences describe the genesis of the NICS data. Who uses the NICS system and for what purpose?
+NICS databases go back to 1998 when NICS was established. Their website claims that it conducted over  300 million checks, and issued more than 1.5 million denials. NICS databases contain numbers and  results of background checks and the corresponding period.  
+Legit firearms sellers, Federal Firearms Licensees (FFL), use the NICS system to ensure they don’t sell  firearms to individuals who may endanger themselves and/or other members of the society. When  someone wants to buy a firearm from a given FFL, that person must fill out the ATF form (ATF form).  The licensed seller then contacts NICS to verify if the potential buyer is eligible to buy or own a firearm  (i.e., if he/she does not have a criminal record, or is not ineligible in some other way, e.g., was not  diagnosed with a mental disease, or does not have a record of drug abuse or domestic violence).  
+
+### 2.Plot the number of background checks by month during 2019.
+```{r echo=TRUE, message=FALSE}
+nics_2019  <- read_excel("2019_month_NICS.xlsx", col_names=TRUE, sheet =2, range="A1:B13")
+
+#add year and day 
+nics_2019$month<-paste("2019",nics_2019$Month,sep=" ",1)%>%str_trim()
+#transform data type to date type
+nics_2019<-nics_2019%>%
+  mutate(date=as.Date(month, "%Y %b %d"))%>%
+  mutate(value=as.numeric(Value))
+
+ggplot(nics_2019, aes(date, value))+
+  geom_line()+
+  ggtitle("Number of background checks by month during 2019")+
+  labs(x= "", y ="#checks")
+  
+
+
+```
+
+### 3. How are background checks and traces related? If you wanted to use these two data sources to learn about the average number of crimes per gun, by type, how would you go about doing that? Given the intuition for your approach.
+
+My approach:  
+1. use the two time-to-crime xls files on Firearm Trace webpage, and merge them to NICS data (merging  using year variable), and firearm traces data (merging using state and year).  
+2. Within the merged dataset, calculate the average amount (time) of crimes per gun by type.  
+3. I will run a regression of the average number of crimes per gun by type on the background 
+ 
+
+## 3 Preliminary analysis
+https://crime-data-explorer.app.cloud.gov/pages/explorer/crime/crime-trend
+### 1. Download data on violent crime rates by state from the FBI Uniform Crime Report.
+```{r}
+viocrm  <- read_excel("table-5.xls", col_names=TRUE)
+viocrm<-viocrm[,c(1,3,5)]
+
+vc<-viocrm%>%fill(State)%>%filter(...3=="Rate per 100,000 inhabitants")%>%mutate(State=gsub('[0-9]+', '', State))%>%rename(state=State)
+
+reg_data<-merge(vc,state_total_wide,by="state")%>%rename(crime="Violent \ncrime1", trace=value)
+glimpse(reg_data)
+```
+
+### 2. Run a regression of state crime rates on the logarithm of the number of ATF traces. Create a clearly-labeled table with the regression output.
+```{r regression, echo=TRUE}
+lm1<-lm(formula = crime ~ log(trace),reg_data)
+summary(lm1)
+
+```
+```{r export reg result, include=FALSE}
+stargazer(lm1, type = "html", out="together.htm")
+```
+
+### 3. How would you interprete the coefficients that you estimate in 3.2? Your responses should be no longer than one paragraph.
+```{r }
+trace_change<-coef(lm1)["log(trace)"]/100
+```
+
+A 1% rise in firearm traces increases the dependent variable crime rate by about 0.3345414 per  100,000 inhabitants with 99.99% statistical significance.
+
+
