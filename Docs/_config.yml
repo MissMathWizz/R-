@@ -1,0 +1,9 @@
+ # Site settings
+title: R Markdown
+author: Yue Wang
+  name: Yue Wang
+  email: wandawang960@gmail.com
+description: "Great site about Jekyll on GH-Pages."
+
+# Build settings
+theme: minima
